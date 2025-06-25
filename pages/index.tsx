@@ -1,4 +1,3 @@
-
 import { useUser, useSupabaseClient } from '@supabase/auth-helpers-react';
 import { useEffect, useState } from 'react';
 import axios from 'axios';
@@ -104,7 +103,7 @@ const AuthPage = () => {
                             </button>
                         </div>
                     </div>
-                    
+
                     {/* --- NEW: Show "Forgot Password" link only on Sign In view --- */}
                     {!isSignUp && (
                         <div className="text-right">
@@ -134,7 +133,7 @@ const PredictionsDashboard = () => {
     const [predictions, setPredictions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all'); // 'all', 'past', 'today', 'future'
-    
+
     useEffect(() => {
         axios.get('/api/get-predictions').then(res => { 
             setPredictions(res.data || []); 
@@ -148,7 +147,7 @@ const PredictionsDashboard = () => {
 
     const getFilteredPredictions = () => {
         const today = new Date().toISOString().split('T')[0];
-        
+
         switch (filter) {
             case 'past':
                 return predictions.filter((game: any) => game.date < today);
@@ -165,11 +164,11 @@ const PredictionsDashboard = () => {
         const today = new Date().toISOString().split('T')[0];
         const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
         const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
-        
+
         if (dateString === today) return 'Today';
         if (dateString === yesterday) return 'Yesterday';
         if (dateString === tomorrow) return 'Tomorrow';
-        
+
         const date = new Date(dateString);
         return date.toLocaleDateString('en-US', { 
             weekday: 'short', 
@@ -181,28 +180,28 @@ const PredictionsDashboard = () => {
     const generateDateRange = () => {
         const dates = [];
         const today = new Date();
-        
+
         // Generate past 14 days
         for (let i = 13; i >= 0; i--) {
             const date = new Date(today);
             date.setDate(date.getDate() - i);
             dates.push(date.toISOString().split('T')[0]);
         }
-        
+
         // Add next 2 days
         for (let i = 1; i <= 2; i++) {
             const date = new Date(today);
             date.setDate(date.getDate() + i);
             dates.push(date.toISOString().split('T')[0]);
         }
-        
+
         return dates;
     };
 
     const getFilteredDates = () => {
         const today = new Date().toISOString().split('T')[0];
         const allDates = generateDateRange();
-        
+
         switch (filter) {
             case 'past':
                 return allDates.filter(date => date < today);
@@ -223,14 +222,14 @@ const PredictionsDashboard = () => {
         groups[date].push(game);
         return groups;
     }, {});
-    
+
     if (loading) return <p className="text-center text-gray-300 py-10">Loading predictions...</p>;
     if (predictions.length === 0) return <p className="text-center text-gray-300 py-10">No low-scoring candidate games found.</p>;
-    
+
     return (
         <div className="p-4 md:p-6 max-w-5xl mx-auto">
             <h2 className="text-3xl font-bold text-center mb-6">Match Predictions & Results</h2>
-            
+
             {/* Filter Buttons */}
             <div className="flex justify-center mb-6 space-x-2">
                 <button
@@ -272,78 +271,102 @@ const PredictionsDashboard = () => {
                                 <p className="text-center text-gray-300 text-sm mt-1">{date}</p>
                             </div>
                             {games.length > 0 ? (
-                                <div className="space-y-3">
-                                    {games.map((game: any) => (
-                                        <div key={game.id} className={`bg-gray-800 border rounded-xl p-4 shadow-lg ${
-                                            game.isCompleted 
-                                                ? (game.isPredictionCorrect ? 'border-green-500' : 'border-red-500')
-                                                : 'border-gray-700'
-                                        }`}>
-                                            {/* League and Time */}
-                                            <div className="flex justify-between items-center mb-2">
-                                                <p className="text-sm text-gray-400 font-semibold">{game.league}</p>
-                                                <p className="text-sm text-gray-400">{game.time}</p>
+                                <>
+                                    {/* Daily Stats Summary */}
+                                    <div className="bg-gray-900 border border-gray-600 rounded-lg p-4 mb-4">
+                                        <div className="grid grid-cols-3 gap-4 text-center">
+                                            <div>
+                                                <div className="text-green-400 font-bold text-lg">{games.length}</div>
+                                                <div className="text-gray-400 text-sm">Predictions</div>
                                             </div>
-
-                                            {/* Weaker Team Note */}
-                                            {game.weakerTeam && (
-                                                <p className="text-red-400 text-sm mb-2">
-                                                    Prediction: Low scoring (≤2 goals) - {game.weakerTeam} expected to struggle
-                                                </p>
-                                            )}
-
-                                            {/* Teams and Score */}
-                                            <div className="flex justify-between items-center text-lg md:text-xl font-bold">
-                                                <div className="flex-1 text-right">
-                                                    <span className={game.weakerTeam === game.homeTeam ? 'text-red-400' : 'text-white'}>
-                                                        {game.homeTeam}
-                                                    </span>
-                                                    {game.isCompleted && (
-                                                        <span className="ml-2 text-2xl font-mono">{game.homeScore}</span>
-                                                    )}
+                                            <div>
+                                                <div className="text-blue-400 font-bold text-lg">
+                                                    {games.filter(g => g.isCompleted && g.isPredictionCorrect).length}
                                                 </div>
-                                                
-                                                <div className="mx-4 text-gray-500 text-center">
-                                                    {game.isCompleted ? '-' : 'vs'}
-                                                </div>
-                                                
-                                                <div className="flex-1 text-left">
-                                                    {game.isCompleted && (
-                                                        <span className="mr-2 text-2xl font-mono">{game.awayScore}</span>
-                                                    )}
-                                                    <span className={game.weakerTeam === game.awayTeam ? 'text-red-400' : 'text-white'}>
-                                                        {game.awayTeam}
-                                                    </span>
-                                                </div>
+                                                <div className="text-gray-400 text-sm">Correct</div>
                                             </div>
-
-                                            {/* Match Result */}
-                                            {game.isCompleted && (
-                                                <div className="mt-3 text-center">
-                                                    <div className="text-sm text-gray-400">
-                                                        Total Goals: <span className="font-bold">{game.totalGoals}</span>
-                                                    </div>
-                                                    <div className={`text-sm font-bold mt-1 ${
-                                                        game.isPredictionCorrect ? 'text-green-400' : 'text-red-400'
-                                                    }`}>
-                                                        Prediction: {game.isPredictionCorrect ? '✅ CORRECT' : '❌ INCORRECT'}
-                                                        {game.isPredictionCorrect 
-                                                            ? ' (≤2 goals as predicted)' 
-                                                            : ` (${game.totalGoals} goals - higher than predicted)`
-                                                        }
-                                                    </div>
+                                            <div>
+                                                <div className="text-yellow-400 font-bold text-lg">
+                                                    {games.filter(g => !g.isCompleted).length}
                                                 </div>
-                                            )}
-
-                                            {/* Future Match Status */}
-                                            {!game.isCompleted && game.status !== 'NS' && (
-                                                <div className="mt-2 text-center text-sm text-yellow-400">
-                                                    Status: {game.status === 'LIVE' ? '🔴 LIVE' : game.status}
-                                                </div>
-                                            )}
+                                                <div className="text-gray-400 text-sm">Upcoming</div>
+                                            </div>
                                         </div>
-                                    ))}
-                                </div>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        {games.map((game: any) => (
+                                            <div key={game.id} className={`bg-gray-800 border rounded-xl p-4 shadow-lg ${
+                                                game.isCompleted 
+                                                    ? (game.isPredictionCorrect ? 'border-green-500' : 'border-red-500')
+                                                    : 'border-gray-700'
+                                            }`}>
+                                                {/* League and Time */}
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <p className="text-sm text-gray-400 font-semibold">{game.league}</p>
+                                                    <p className="text-sm text-gray-400">{game.time}</p>
+                                                </div>
+
+                                                {/* Weaker Team Note */}
+                                                {game.weakerTeam && (
+                                                    <p className="text-red-400 text-sm mb-2">
+                                                        Prediction: Low scoring (≤2 goals) - {game.weakerTeam} expected to struggle
+                                                    </p>
+                                                )}
+
+                                                {/* Teams and Score */}
+                                                <div className="flex justify-between items-center text-lg md:text-xl font-bold">
+                                                    <div className="flex-1 text-right">
+                                                        <span className={game.weakerTeam === game.homeTeam ? 'text-red-400' : 'text-white'}>
+                                                            {game.homeTeam}
+                                                        </span>
+                                                        {game.isCompleted && (
+                                                            <span className="ml-2 text-2xl font-mono">{game.homeScore}</span>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="mx-4 text-gray-500 text-center">
+                                                        {game.isCompleted ? '-' : 'vs'}
+                                                    </div>
+
+                                                    <div className="flex-1 text-left">
+                                                        {game.isCompleted && (
+                                                            <span className="mr-2 text-2xl font-mono">{game.awayScore}</span>
+                                                        )}
+                                                        <span className={game.weakerTeam === game.awayTeam ? 'text-red-400' : 'text-white'}>
+                                                            {game.awayTeam}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Match Result */}
+                                                {game.isCompleted && (
+                                                    <div className="mt-3 text-center">
+                                                        <div className="text-sm text-gray-400">
+                                                            Total Goals: <span className="font-bold">{game.totalGoals}</span>
+                                                        </div>
+                                                        <div className={`text-sm font-bold mt-1 ${
+                                                            game.isPredictionCorrect ? 'text-green-400' : 'text-red-400'
+                                                        }`}>
+                                                            Prediction: {game.isPredictionCorrect ? '✅ CORRECT' : '❌ INCORRECT'}
+                                                            {game.isPredictionCorrect 
+                                                                ? ' (≤2 goals as predicted)' 
+                                                                : ` (${game.totalGoals} goals - higher than predicted)`
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Future Match Status */}
+                                                {!game.isCompleted && game.status !== 'NS' && (
+                                                    <div className="mt-2 text-center text-sm text-yellow-400">
+                                                        Status: {game.status === 'LIVE' ? '🔴 LIVE' : game.status}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </>
                             ) : (
                                 <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 text-center">
                                     <p className="text-gray-400">No matches scheduled for this date</p>
@@ -370,7 +393,7 @@ const PaywallPage = ({ user }) => {
             onCancel: () => alert("Payment window closed."),
         });
     };
-    
+
     return (
         <div className="text-center py-20 px-6">
             <h1 className="text-4xl font-bold mb-4">Your Free Trial Has Ended</h1>
@@ -398,7 +421,7 @@ export default function Home() {
             setLoading(false); 
         }
     }, [user, supabase]);
-    
+
     const handleLogout = async () => { 
         await supabase.auth.signOut(); 
         setProfile(null); 
@@ -412,7 +435,7 @@ export default function Home() {
         const trialEndsAt = new Date(profile.trial_ends_at);
         const isSubscribed = profile.subscription_status === 'active';
         if (isSubscribed || (new Date() <= trialEndsAt)) return <PredictionsDashboard />;
-        
+
         return <PaywallPage user={user} />;
     };
 
