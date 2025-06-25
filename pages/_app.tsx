@@ -5,7 +5,15 @@ import type { AppProps } from 'next/app';
 import '../styles/globals.css';
 
 function MyApp({ Component, pageProps }: AppProps<{ initialSession: Session }>) {
-  const [supabaseClient] = useState(() => createPagesBrowserClient());
+  const [supabaseClient] = useState(() => createPagesBrowserClient({
+    cookieOptions: {
+      name: 'sb-auth-token',
+      lifetime: 60 * 60 * 24 * 7, // 7 days
+      domain: undefined,
+      path: '/',
+      sameSite: 'lax'
+    }
+  }));
 
   return (
     <SessionContextProvider

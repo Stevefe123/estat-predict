@@ -413,19 +413,49 @@ export default function Home() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (user) {
-            setLoading(true);
-            supabase.from('profiles').select('*').eq('id', user.id).single()
-                .then(({ data }) => { setProfile(data); setLoading(false); });
-        } else { 
-            setLoading(false); 
-        }
+        const getSession = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) {
+                setLoading(true);
+                const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+                setProfile(data);
+                setLoading(false);
+            } else if (user) {
+                setLoading(true);
+                const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+                setProfile(data);
+                setLoading(false);
+            } else { 
+                setLoading(false); 
+            }
+        };
+
+        getSession();
     }, [user, supabase]);
 
     const handleLogout = async () => { 
         await supabase.auth.signOut(); 
         setProfile(null); 
     };
+
+    // Listen for auth state changes
+    useEffect(() => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            async (event, session) => {
+                if (event === 'SIGNED_IN' && session?.user) {
+                    setLoading(true);
+                    const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+                    setProfile(data);
+                    setLoading(false);
+                } else if (event === 'SIGNED_OUT') {
+                    setProfile(null);
+                    setLoading(false);
+                }
+            }
+        );
+
+        return () => subscription.unsubscribe();
+    }, [supabase]);
 
     const renderContent = () => {
         if (loading) return <p className="text-center text-gray-300 py-10">Loading...</p>;
