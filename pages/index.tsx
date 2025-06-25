@@ -60,7 +60,7 @@ const AuthPage = () => {
         setMessage('');
         setError('');
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: window.location.origin, // Sends them back to your site after reset
+            redirectTo: `${window.location.origin}/reset-password`, // Redirect to reset password page
         });
         if (error) setError(error.message);
         else setMessage('If an account exists for this email, a password reset link has been sent.');
