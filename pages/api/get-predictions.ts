@@ -1,6 +1,7 @@
+
 import { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
-import { format } from 'date-fns';
+import { format, addDays, subDays } from 'date-fns';
 
 // This is our simple prediction algorithm.
 // It checks if a game is a good candidate for "low score".
@@ -42,8 +43,22 @@ const isLowScoringCandidate = (fixture: any) => {
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-    // Get today's date in YYYY-MM-DD format
-    const today = format(new Date(), 'yyyy-MM-dd');
+    // Generate dates: 14 days back to 2 days forward
+    const today = new Date();
+    const dates = [];
+    
+    // Add past 14 days
+    for (let i = 14; i >= 1; i--) {
+        dates.push(format(subDays(today, i), 'yyyy-MM-dd'));
+    }
+    
+    // Add today
+    dates.push(format(today, 'yyyy-MM-dd'));
+    
+    // Add next 2 days
+    for (let i = 1; i <= 2; i++) {
+        dates.push(format(addDays(today, i), 'yyyy-MM-dd'));
+    }
 
     // These are some league IDs for popular low-scoring leagues.
     // 135 = Italian Serie A, 140 = Spanish La Liga, 88 = Dutch Eredivisie, 78 = German Bundesliga
@@ -60,24 +75,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let allPredictions = [];
 
     try {
-        for (const leagueId of leagueIds) {
-            const response = await axios.get(`https://api-football-v1.p.rapidapi.com/v3/fixtures?league=${leagueId}&season=2023&date=${today}`, options);
-            const fixtures = response.data.response;
+        for (const date of dates) {
+            for (const leagueId of leagueIds) {
+                const response = await axios.get(`https://api-football-v1.p.rapidapi.com/v3/fixtures?league=${leagueId}&season=2023&date=${date}`, options);
+                const fixtures = response.data.response;
 
-            for (const fixture of fixtures) {
-                const { isCandidate, weakerTeam } = isLowScoringCandidate(fixture);
-                
-                if (isCandidate) {
-                    allPredictions.push({
-                        id: fixture.fixture.id,
-                        league: fixture.league.name,
-                        homeTeam: fixture.teams.home.name,
-                        awayTeam: fixture.teams.away.name,
-                        weakerTeam: weakerTeam,
-                    });
+                for (const fixture of fixtures) {
+                    const { isCandidate, weakerTeam } = isLowScoringCandidate(fixture);
+                    
+                    if (isCandidate) {
+                        const matchDate = new Date(fixture.fixture.date);
+                        const isCompleted = fixture.fixture.status.short === 'FT';
+                        
+                        allPredictions.push({
+                            id: fixture.fixture.id,
+                            date: format(matchDate, 'yyyy-MM-dd'),
+                            time: format(matchDate, 'HH:mm'),
+                            league: fixture.league.name,
+                            homeTeam: fixture.teams.home.name,
+                            awayTeam: fixture.teams.away.name,
+                            weakerTeam: weakerTeam,
+                            status: fixture.fixture.status.short,
+                            isCompleted: isCompleted,
+                            homeScore: isCompleted ? fixture.goals.home : null,
+                            awayScore: isCompleted ? fixture.goals.away : null,
+                            totalGoals: isCompleted ? (fixture.goals.home + fixture.goals.away) : null,
+                            isPredictionCorrect: isCompleted ? (fixture.goals.home + fixture.goals.away) <= 2 : null
+                        });
+                    }
                 }
             }
         }
+        
+        // Sort by date (newest first for better UX)
+        allPredictions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         
         res.status(200).json(allPredictions);
 

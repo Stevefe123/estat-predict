@@ -133,6 +133,7 @@ const AuthPage = () => {
 const PredictionsDashboard = () => {
     const [predictions, setPredictions] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [filter, setFilter] = useState('all'); // 'all', 'past', 'today', 'future'
     
     useEffect(() => {
         axios.get('/api/get-predictions').then(res => { 
@@ -143,26 +144,169 @@ const PredictionsDashboard = () => {
             setLoading(false); 
         });
     }, []);
+
+    const getFilteredPredictions = () => {
+        const today = new Date().toISOString().split('T')[0];
+        
+        switch (filter) {
+            case 'past':
+                return predictions.filter((game: any) => game.date < today);
+            case 'today':
+                return predictions.filter((game: any) => game.date === today);
+            case 'future':
+                return predictions.filter((game: any) => game.date > today);
+            default:
+                return predictions;
+        }
+    };
+
+    const getDateLabel = (dateString: string) => {
+        const today = new Date().toISOString().split('T')[0];
+        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+        
+        if (dateString === today) return 'Today';
+        if (dateString === yesterday) return 'Yesterday';
+        if (dateString === tomorrow) return 'Tomorrow';
+        
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', { 
+            weekday: 'short', 
+            month: 'short', 
+            day: 'numeric' 
+        });
+    };
+
+    const groupedPredictions = getFilteredPredictions().reduce((groups: any, game: any) => {
+        const date = game.date;
+        if (!groups[date]) {
+            groups[date] = [];
+        }
+        groups[date].push(game);
+        return groups;
+    }, {});
     
-    if (loading) return <p className="text-center text-gray-300 py-10">Analyzing today's games...</p>;
-    if (predictions.length === 0) return <p className="text-center text-gray-300 py-10">No low-scoring candidate games found for today.</p>;
+    if (loading) return <p className="text-center text-gray-300 py-10">Loading predictions...</p>;
+    if (predictions.length === 0) return <p className="text-center text-gray-300 py-10">No low-scoring candidate games found.</p>;
     
     return (
-        <div className="p-4 md:p-6 max-w-4xl mx-auto">
-            <h2 className="text-3xl font-bold text-center mb-6">Today's Predictions</h2>
-            <div className="space-y-4">
-                {predictions.map((game: any) => (
-                    <div key={game.id} className="bg-gray-800 border border-gray-700 rounded-xl p-5 shadow-lg">
-                        <p className="text-sm text-gray-400 font-semibold">{game.league}</p>
-                        {game.weakerTeam && <p className="text-red-500 font-bold mt-2">({game.weakerTeam} - Excluded number of goals - 3)</p>}
-                        <div className="flex justify-between items-center text-xl md:text-2xl font-bold mt-3">
-                            <span className={`text-right flex-1 ${game.weakerTeam === game.homeTeam ? 'text-red-500' : ''}`}>{game.homeTeam}</span>
-                            <span className="text-gray-500 mx-4">vs</span>
-                            <span className={`text-left flex-1 ${game.weakerTeam === game.awayTeam ? 'text-red-500' : ''}`}>{game.awayTeam}</span>
+        <div className="p-4 md:p-6 max-w-5xl mx-auto">
+            <h2 className="text-3xl font-bold text-center mb-6">Match Predictions & Results</h2>
+            
+            {/* Filter Buttons */}
+            <div className="flex justify-center mb-6 space-x-2">
+                <button
+                    onClick={() => setFilter('all')}
+                    className={`px-4 py-2 rounded-lg font-medium ${filter === 'all' ? 'bg-green-500 text-gray-900' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                >
+                    All
+                </button>
+                <button
+                    onClick={() => setFilter('past')}
+                    className={`px-4 py-2 rounded-lg font-medium ${filter === 'past' ? 'bg-green-500 text-gray-900' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                >
+                    Past 2 Weeks
+                </button>
+                <button
+                    onClick={() => setFilter('today')}
+                    className={`px-4 py-2 rounded-lg font-medium ${filter === 'today' ? 'bg-green-500 text-gray-900' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                >
+                    Today
+                </button>
+                <button
+                    onClick={() => setFilter('future')}
+                    className={`px-4 py-2 rounded-lg font-medium ${filter === 'future' ? 'bg-green-500 text-gray-900' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                >
+                    Next 2 Days
+                </button>
+            </div>
+
+            {/* Grouped Matches by Date */}
+            <div className="space-y-6">
+                {Object.entries(groupedPredictions).map(([date, games]: [string, any[]]) => (
+                    <div key={date}>
+                        <h3 className="text-xl font-bold text-green-400 mb-3 sticky top-0 bg-gray-900 py-2">
+                            {getDateLabel(date)} ({date})
+                        </h3>
+                        <div className="space-y-3">
+                            {games.map((game: any) => (
+                                <div key={game.id} className={`bg-gray-800 border rounded-xl p-4 shadow-lg ${
+                                    game.isCompleted 
+                                        ? (game.isPredictionCorrect ? 'border-green-500' : 'border-red-500')
+                                        : 'border-gray-700'
+                                }`}>
+                                    {/* League and Time */}
+                                    <div className="flex justify-between items-center mb-2">
+                                        <p className="text-sm text-gray-400 font-semibold">{game.league}</p>
+                                        <p className="text-sm text-gray-400">{game.time}</p>
+                                    </div>
+
+                                    {/* Weaker Team Note */}
+                                    {game.weakerTeam && (
+                                        <p className="text-red-400 text-sm mb-2">
+                                            Prediction: Low scoring (≤2 goals) - {game.weakerTeam} expected to struggle
+                                        </p>
+                                    )}
+
+                                    {/* Teams and Score */}
+                                    <div className="flex justify-between items-center text-lg md:text-xl font-bold">
+                                        <div className="flex-1 text-right">
+                                            <span className={game.weakerTeam === game.homeTeam ? 'text-red-400' : 'text-white'}>
+                                                {game.homeTeam}
+                                            </span>
+                                            {game.isCompleted && (
+                                                <span className="ml-2 text-2xl font-mono">{game.homeScore}</span>
+                                            )}
+                                        </div>
+                                        
+                                        <div className="mx-4 text-gray-500 text-center">
+                                            {game.isCompleted ? '-' : 'vs'}
+                                        </div>
+                                        
+                                        <div className="flex-1 text-left">
+                                            {game.isCompleted && (
+                                                <span className="mr-2 text-2xl font-mono">{game.awayScore}</span>
+                                            )}
+                                            <span className={game.weakerTeam === game.awayTeam ? 'text-red-400' : 'text-white'}>
+                                                {game.awayTeam}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Match Result */}
+                                    {game.isCompleted && (
+                                        <div className="mt-3 text-center">
+                                            <div className="text-sm text-gray-400">
+                                                Total Goals: <span className="font-bold">{game.totalGoals}</span>
+                                            </div>
+                                            <div className={`text-sm font-bold mt-1 ${
+                                                game.isPredictionCorrect ? 'text-green-400' : 'text-red-400'
+                                            }`}>
+                                                Prediction: {game.isPredictionCorrect ? '✅ CORRECT' : '❌ INCORRECT'}
+                                                {game.isPredictionCorrect 
+                                                    ? ' (≤2 goals as predicted)' 
+                                                    : ` (${game.totalGoals} goals - higher than predicted)`
+                                                }
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Future Match Status */}
+                                    {!game.isCompleted && game.status !== 'NS' && (
+                                        <div className="mt-2 text-center text-sm text-yellow-400">
+                                            Status: {game.status === 'LIVE' ? '🔴 LIVE' : game.status}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
                         </div>
                     </div>
                 ))}
             </div>
+
+            {getFilteredPredictions().length === 0 && (
+                <p className="text-center text-gray-400 py-10">No matches found for selected filter.</p>
+            )}
         </div>
     );
 };
