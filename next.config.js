@@ -1,8 +1,8 @@
 
-const { env } = require("process");
-
+/** @type {import('next').NextConfig} */
 const nextConfig = {
-  allowedDevOrigins: [env.REPLIT_DOMAINS?.split(",")[0]],
-};
+  reactStrictMode: true,
+  swcMinify: true,
+}
 
-module.exports = nextConfig;
+module.exports = nextConfig

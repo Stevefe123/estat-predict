@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "npm run build:css && next dev",
+    "dev": "npm run build:css && next dev -p 3000",
     "build": "npm run build:css && next build",
     "start": "next start",
     "lint": "next lint",
