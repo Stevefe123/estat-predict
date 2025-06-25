@@ -131,6 +131,8 @@ const LandingPage = () => {
     }
 
     return (
+
+    return (
         <div className="min-h-screen">
             {/* Hero Section */}
             <section className="relative bg-gradient-to-br from-green-900 via-gray-900 to-black py-20 px-6 text-center overflow-hidden">
