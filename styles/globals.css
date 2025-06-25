@@ -629,6 +629,10 @@ video {
   display: flex;
 }
 
+.grid {
+  display: grid;
+}
+
 .h-5 {
   height: 1.25rem;
 }
@@ -669,6 +673,10 @@ video {
   flex: 1 1 0%;
 }
 
+.grid-cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .flex-col {
   flex-direction: column;
 }
@@ -687,6 +695,10 @@ video {
 
 .gap-2 {
   gap: 0.5rem;
+}
+
+.gap-4 {
+  gap: 1rem;
 }
 
 .space-x-2 > :not([hidden]) ~ :not([hidden]) {
@@ -907,6 +919,11 @@ video {
 
 .font-semibold {
   font-weight: 600;
+}
+
+.text-blue-400 {
+  --tw-text-opacity: 1;
+  color: rgb(96 165 250 / var(--tw-text-opacity, 1));
 }
 
 .text-gray-300 {
