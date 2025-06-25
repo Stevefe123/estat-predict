@@ -259,14 +259,17 @@ const PredictionsDashboard = () => {
             </div>
 
             {/* Grouped Matches by Date */}
-            <div className="space-y-6">
+            <div className="space-y-8">
                 {getFilteredDates().map((date) => {
                     const games = groupedPredictions[date] || [];
                     return (
-                        <div key={date}>
-                            <h3 className="text-xl font-bold text-green-400 mb-3 sticky top-0 bg-gray-900 py-2">
-                                {getDateLabel(date)} ({date})
-                            </h3>
+                        <div key={date} className="border-t border-gray-700 pt-4 first:border-t-0 first:pt-0">
+                            <div className="bg-gray-800 border border-green-500 rounded-lg p-3 mb-4">
+                                <h3 className="text-2xl font-bold text-green-400 text-center">
+                                    {getDateLabel(date)}
+                                </h3>
+                                <p className="text-center text-gray-300 text-sm mt-1">{date}</p>
+                            </div>
                             {games.length > 0 ? (
                                 <div className="space-y-3">
                                     {games.map((game: any) => (
