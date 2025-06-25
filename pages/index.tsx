@@ -193,7 +193,7 @@ export default function Home() {
         const isSubscribed = profile.subscription_status === 'active';
         if (isSubscribed || (new Date() <= trialEndsAt)) return <PredictionsDashboard />;
         
-        return <FullPaywallPage user={user} />;
+ c       return <FullPaywallPage user={user} />;
     };
 
     return (
