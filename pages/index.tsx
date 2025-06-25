@@ -137,10 +137,11 @@ const PredictionsDashboard = () => {
     
     useEffect(() => {
         axios.get('/api/get-predictions').then(res => { 
-            setPredictions(res.data); 
+            setPredictions(res.data || []); 
             setLoading(false); 
         }).catch(err => { 
-            console.error(err); 
+            console.error('Error fetching predictions:', err); 
+            setPredictions([]); // Set empty array on error
             setLoading(false); 
         });
     }, []);

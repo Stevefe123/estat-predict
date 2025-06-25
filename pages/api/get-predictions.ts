@@ -77,32 +77,49 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
         for (const date of dates) {
             for (const leagueId of leagueIds) {
-                const response = await axios.get(`https://api-football-v1.p.rapidapi.com/v3/fixtures?league=${leagueId}&season=2023&date=${date}`, options);
-                const fixtures = response.data.response;
+                try {
+                    const response = await axios.get(`https://api-football-v1.p.rapidapi.com/v3/fixtures?league=${leagueId}&season=2023&date=${date}`, options);
+                    const fixtures = response.data.response;
 
-                for (const fixture of fixtures) {
-                    const { isCandidate, weakerTeam } = isLowScoringCandidate(fixture);
-                    
-                    if (isCandidate) {
-                        const matchDate = new Date(fixture.fixture.date);
-                        const isCompleted = fixture.fixture.status.short === 'FT';
+                    for (const fixture of fixtures) {
+                        const { isCandidate, weakerTeam } = isLowScoringCandidate(fixture);
                         
-                        allPredictions.push({
-                            id: fixture.fixture.id,
-                            date: format(matchDate, 'yyyy-MM-dd'),
-                            time: format(matchDate, 'HH:mm'),
-                            league: fixture.league.name,
-                            homeTeam: fixture.teams.home.name,
-                            awayTeam: fixture.teams.away.name,
-                            weakerTeam: weakerTeam,
-                            status: fixture.fixture.status.short,
-                            isCompleted: isCompleted,
-                            homeScore: isCompleted ? fixture.goals.home : null,
-                            awayScore: isCompleted ? fixture.goals.away : null,
-                            totalGoals: isCompleted ? (fixture.goals.home + fixture.goals.away) : null,
-                            isPredictionCorrect: isCompleted ? (fixture.goals.home + fixture.goals.away) <= 2 : null
-                        });
+                        if (isCandidate) {
+                            const matchDate = new Date(fixture.fixture.date);
+                            const isCompleted = fixture.fixture.status.short === 'FT';
+                            
+                            allPredictions.push({
+                                id: fixture.fixture.id,
+                                date: format(matchDate, 'yyyy-MM-dd'),
+                                time: format(matchDate, 'HH:mm'),
+                                league: fixture.league.name,
+                                homeTeam: fixture.teams.home.name,
+                                awayTeam: fixture.teams.away.name,
+                                weakerTeam: weakerTeam,
+                                status: fixture.fixture.status.short,
+                                isCompleted: isCompleted,
+                                homeScore: isCompleted ? fixture.goals.home : null,
+                                awayScore: isCompleted ? fixture.goals.away : null,
+                                totalGoals: isCompleted ? (fixture.goals.home + fixture.goals.away) : null,
+                                isPredictionCorrect: isCompleted ? (fixture.goals.home + fixture.goals.away) <= 2 : null
+                            });
+                        }
                     }
+                    
+                    // Add delay between requests to avoid rate limiting
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    
+                } catch (apiError: any) {
+                    console.error(`API Error for league ${leagueId} on ${date}:`, apiError.response?.data || apiError.message);
+                    
+                    // If rate limited, skip this request but continue with others
+                    if (apiError.response?.status === 429) {
+                        console.log('Rate limited - skipping this request');
+                        continue;
+                    }
+                    
+                    // For other errors, continue to next request
+                    continue;
                 }
             }
         }
@@ -110,10 +127,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Sort by date (newest first for better UX)
         allPredictions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         
+        // Return available predictions even if some API calls failed
         res.status(200).json(allPredictions);
 
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Error fetching data from Football API' });
+        console.error('General error:', error);
+        res.status(500).json({ message: 'Error fetching data from Football API', predictions: [] });
     }
 }
