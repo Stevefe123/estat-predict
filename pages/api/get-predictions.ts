@@ -40,7 +40,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         let fixturesToProcess = [];
         for (const result of fixtureResults) {
             if (result.status === 'fulfilled') {
-                fixturesToProcess.push(...result.data.data.response);
+                fixturesToProcess.push(...result.value.data.response);
             }
         }
 
