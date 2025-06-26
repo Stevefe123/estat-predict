@@ -10,92 +10,94 @@ const API_OPTIONS = {
     }
 };
 
-// --- STAGE 3: Final check on individual team form ---
+// Final check on individual team form
 const hasLowScoringForm = (fixture: any) => {
-    const homeGoals = parseFloat(fixture.teams.home.last_5_games?.goals?.for?.average || '2.0');
-    const awayGoals = parseFloat(fixture.teams.away.last_5_games?.goals?.for?.average || '2.0');
-    return homeGoals < 1.5 && awayGoals < 1.5; // Stricter rule: both teams must be low-scoring
+    const homeGoals = parseFloat(fixture.teams.home.last_5_games?.goals?.for?.average || '99');
+    const awayGoals = parseFloat(fixture.teams.away.last_5_games?.goals?.for?.average || '99');
+    return homeGoals < 1.6 || awayGoals < 1.6; // If either team is struggling to score
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     const queryDate = req.query.date as string || format(new Date(), 'yyyy-MM-dd');
+    const dateToFetch = parseISO(queryDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-    // Past dates are not supported by this intensive search, only predictions
-    if (parseISO(queryDate) < new Date()) {
-        return res.status(200).json([]);
-    }
+    // Using the comprehensive global league list
+    const leagueIds = [
+        39, 140, 135, 78, 61, 94, 88, 197, 203, 253, 262, 71, 103, 218, 144, 40,
+        2, 79, 136, 141, 62, 89, 207, 98, 239, 119, 113, 202, 290, 233, 99
+    ]; 
+
+    let allGames = [];
     
     try {
-        // --- STAGE 1: Find Low-Scoring Leagues ---
-        // Fetch a list of all available leagues
-        const leaguesResponse = await axios.get('https://api-football-v1.p.rapidapi.com/v3/leagues?season=2023', API_OPTIONS);
-        const allLeagues = leaguesResponse.data.response;
-        
-        const lowScoringLeagues = [];
-        for (const leagueData of allLeagues) {
-            // Check if the league is a major one and if its country has coverage
-            if (leagueData.league.type === 'League' && leagueData.coverage.fixtures.statistics_fixtures) {
-                // Check average goals for the league if available (this is a conceptual check, as API-Football doesn't provide this directly)
-                // We'll use a curated list as a more reliable proxy for now, but this structure allows for future improvement.
-                // For now, we will use our expanded list. The logic below will filter games from them.
-                const leagueIdsToSearch = [39, 140, 135, 78, 61, 94, 88, 197, 203, 253, 262, 71, 103, 218];
-                if (leagueIdsToSearch.includes(leagueData.league.id)) {
-                    lowScoringLeagues.push(leagueData.league.id);
-                }
+        const fixturePromises = leagueIds.map(leagueId =>
+            axios.get(`https://api-football-v1.p.rapidapi.com/v3/fixtures?league=${leagueId}&season=2023&date=${queryDate}`, API_OPTIONS)
+        );
+        const fixtureResults = await Promise.allSettled(fixturePromises);
+
+        let fixturesToProcess = [];
+        for (const result of fixtureResults) {
+            if (result.status === 'fulfilled') {
+                fixturesToProcess.push(...result.data.data.response);
             }
         }
-        
-        let highQualityPredictions = [];
 
-        // --- STAGE 2: Find Games with Low-Scoring H2H and Form ---
-        for (const leagueId of lowScoringLeagues) {
-            const fixturesResponse = await axios.get(`https://api-football-v1.p.rapidapi.com/v3/fixtures?league=${leagueId}&season=2023&date=${queryDate}`, API_OPTIONS);
-            const fixtures = fixturesResponse.data.response;
+        for (const fixture of fixturesToProcess) {
+            let gameData: any = {
+                id: fixture.fixture.id,
+                league: fixture.league.name,
+                homeTeam: fixture.teams.home.name,
+                awayTeam: fixture.teams.away.name,
+            };
 
-            for (const fixture of fixtures) {
-                const homeTeamId = fixture.teams.home.id;
-                const awayTeamId = fixture.teams.away.id;
-
-                // 2a. Check Head-to-Head (H2H)
-                const h2hResponse = await axios.get(`https://api-football-v1.p.rapidapi.com/v3/fixtures/headtohead?h2h=${homeTeamId}-${awayTeamId}&last=5`, API_OPTIONS);
+            // Handle past games for scores
+            if (dateToFetch < today && fixture.fixture.status.short === 'FT') {
+                gameData.score = { home: fixture.score.fulltime.home, away: fixture.score.fulltime.away };
+                allGames.push(gameData);
+                continue; // Move to the next fixture
+            }
+            
+            // Handle future games for predictions
+            if (dateToFetch >= today) {
+                // H2H Check (Primary Filter)
+                const h2hResponse = await axios.get(`https://api-football-v1.p.rapidapi.com/v3/fixtures/headtohead?h2h=${fixture.teams.home.id}-${fixture.teams.away.id}&last=5`, API_OPTIONS);
                 const h2hGames = h2hResponse.data.response;
 
-                if (h2hGames.length > 0) {
+                let isH2HLowScoring = false;
+                if (h2hGames.length === 0) {
+                    isH2HLowScoring = true; // No data, so we don't disqualify it
+                } else {
                     let totalGoals = 0;
-                    h2hGames.forEach(game => {
-                        totalGoals += game.goals.home + game.goals.away;
-                    });
+                    h2hGames.forEach(game => { totalGoals += game.goals.home + game.goals.away; });
                     const avgH2HGoals = totalGoals / h2hGames.length;
+                    if (avgH2HGoals <= 2.5) { // A reasonable threshold
+                        isH2HLowScoring = true;
+                    }
+                }
 
-                    // If average H2H goals are 2.0 or less, proceed
-                    if (avgH2HGoals <= 2.0) {
+                // If it passes the H2H check, proceed to the form check
+                if (isH2HLowScoring) {
+                    if (hasLowScoringForm(fixture)) {
+                        let weakerTeam = null;
+                        const homeGoalsAvg = parseFloat(fixture.teams.home.last_5_games?.goals?.for?.average || '99');
+                        const awayGoalsAvg = parseFloat(fixture.teams.away.last_5_games?.goals?.for?.average || '99');
+                        if (homeGoalsAvg < awayGoalsAvg) weakerTeam = fixture.teams.home.name;
+                        else if (awayGoalsAvg < homeGoalsAvg) weakerTeam = fixture.teams.away.name;
                         
-                        // 2b. Check recent form (STAGE 3)
-                        if (hasLowScoringForm(fixture)) {
-                            let weakerTeam = null;
-                            const homeGoalsAvg = parseFloat(fixture.teams.home.last_5_games?.goals?.for?.average || '2.0');
-                            const awayGoalsAvg = parseFloat(fixture.teams.away.last_5_games?.goals?.for?.average || '2.0');
-
-                            if(homeGoalsAvg < awayGoalsAvg) weakerTeam = fixture.teams.home.name;
-                            else if (awayGoalsAvg < homeGoalsAvg) weakerTeam = fixture.teams.away.name;
-
-                            highQualityPredictions.push({
-                                id: fixture.fixture.id,
-                                league: fixture.league.name,
-                                homeTeam: fixture.teams.home.name,
-                                awayTeam: fixture.teams.away.name,
-                                weakerTeam: weakerTeam,
-                            });
-                        }
+                        gameData.weakerTeam = weakerTeam;
+                        allGames.push(gameData);
                     }
                 }
             }
         }
-
-        res.status(200).json(highQualityPredictions);
+        
+        allGames.sort((a, b) => a.league.localeCompare(b.league));
+        res.status(200).json(allGames);
 
     } catch (error) {
         console.error("API Error:", error.response ? error.response.data : error.message);
-        res.status(500).json({ message: 'Error fetching data. The API may be busy or the request limit was reached.' });
+        res.status(500).json({ message: 'Error fetching data.' });
     }
 }
