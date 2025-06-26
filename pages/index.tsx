@@ -92,7 +92,7 @@ const RealPredictionsDashboard = () => {
     return (<div className="p-4 md:p-6 max-w-4xl mx-auto"><h2 className="text-3xl font-bold text-center mb-6">Daily Games</h2><div className="flex justify-center items-center gap-4 mb-6"><button onClick={() => changeDate(-1)} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">← Yesterday</button><span className="text-xl font-semibold text-green-400">{format(date, 'MMM dd, yyyy')}</span><button onClick={() => changeDate(1)} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Tomorrow →</button></div>{loading && (<div className="text-center text-gray-300 py-10"><p className="text-xl">Performing Deep Analysis...</p><p className="text-sm text-gray-500 mt-2">This may take a moment.</p></div>)}{!loading && games.length === 0 && <p className="text-center text-gray-300 py-10">No relevant games found for this day.</p>}<div className="space-y-4">{games.map((game: any) => (<div key={game.id} className="bg-gray-800 border border-gray-700 rounded-xl p-5 shadow-lg"><p className="text-sm text-gray-400 font-semibold">{game.league}</p>{game.score ? (<div className="text-center text-3xl font-bold my-3 text-white"><span>{game.score.home} - {game.score.away}</span><p className="text-sm font-normal text-gray-500">Full-Time</p></div>) : (game.weakerTeam && <p className="text-red-500 font-bold mt-2">({game.weakerTeam} - Excluded number of goals - 3)</p>)}<div className="flex justify-between items-center text-xl md:text-2xl font-bold mt-3"><span className={`text-right flex-1 ${game.weakerTeam === game.homeTeam ? 'text-red-500' : ''}`}>{game.homeTeam}</span><span className="text-gray-500 mx-4">vs</span><span className={`text-left flex-1 ${game.weakerTeam === game.awayTeam ? 'text-red-500' : ''}`}>{game.awayTeam}</span></div></div>))}</div></div>);
 };
 
-// --- MAIN PAGE ORCHESTRATOR ---
+// --- MAIN PAGE ORCHESTRATOR (Corrected Version) ---
 export default function Home() {
     const session = useSession();
     const user = useUser();
@@ -113,11 +113,24 @@ export default function Home() {
     
     const handleLogout = async () => { await supabase.auth.signOut(); setProfile(null); };
 
+    // This sub-component decides what a logged-in user sees
     const renderLoggedInContent = () => {
         if (!profile) return <p className="text-center text-gray-300 py-10">Finalizing login...</p>;
+
         const trialEndsAt = new Date(profile.trial_ends_at);
         const isSubscribed = profile.subscription_status === 'active';
-        if (isSubscribed || (new Date() <= trialEndsAt)) return <><NewsSlideshow /><RealPredictionsDashboard /></>;
+        
+        if (isSubscribed || (new Date() <= trialEndsAt)) {
+            // --- THIS WAS THE MISSING PART ---
+            // Now correctly returns both the slideshow and the dashboard
+            return (
+                <>
+                    <NewsSlideshow />
+                    <RealPredictionsDashboard />
+                </>
+            );
+        }
+        
         return <FullPaywallPage user={user} />;
     };
 
@@ -126,12 +139,24 @@ export default function Home() {
             <Header onLogout={handleLogout} isLoggedIn={!!user} />
             <main>
                 {loading && <div className="text-center text-gray-300 py-20">Loading...</div>}
+
+                {/* --- THIS WAS THE MISSING PART --- */}
+                {/* This logic now correctly shows the Landing Page AND the Auth form for logged-out users */}
                 {!loading && !user && (
                     <>
-                        <LandingPage onGetStartedClick={() => { document.getElementById('auth-section')?.scrollIntoView({ behavior: 'smooth' }); }} />
-                        <div id="auth-section"><FullAuthPage /></div>
+                        <LandingPage onGetStartedClick={() => { 
+                            const authSection = document.getElementById('auth-section');
+                            if (authSection) {
+                                authSection.scrollIntoView({ behavior: 'smooth' });
+                            }
+                        }} />
+                        <div id="auth-section">
+                            <FullAuthPage />
+                        </div>
                     </>
                 )}
+
+                {/* This logic correctly shows content for logged-in users */}
                 {!loading && user && renderLoggedInContent()}
             </main>
             <WhatsAppFooter />
