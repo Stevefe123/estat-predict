@@ -79,11 +79,73 @@ const PredictionsDashboard = () => {
     const [games, setGames] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const dateInputRef = React.useRef<HTMLInputElement>(null);
+
     const formattedDate = format(date, 'yyyy-MM-dd');
-    useEffect(() => { setLoading(true); axios.get(`/api/get-predictions?date=${formattedDate}`).then(res => { setGames(res.data); setLoading(false); }).catch(err => { console.error(err); setLoading(false); }); }, [formattedDate]);
-    const changeDate = (days: number) => { setDate(currentDate => addDays(currentDate, days)); };
-    const handleDateChange = (event: React.ChangeEvent<HTMLInputElement>) => { const selectedDate = new Date(event.target.value + 'T00:00:00'); setDate(selectedDate); };
-    return (<div className="p-4 md:p-6 max-w-4xl mx-auto"><h2 className="text-3xl font-bold text-center mb-6">Daily Games</h2><div className="flex justify-center items-center gap-2 sm:gap-4 mb-6"><button onClick={() => changeDate(-1)} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">←</button><span className="text-lg sm:text-xl font-semibold text-green-400 text-center w-40">{format(date, 'MMM dd, yyyy')}</span><button onClick={() => changeDate(1)} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">→</button><button onClick={() => dateInputRef.current?.showPicker()} className="p-2 bg-gray-700 hover:bg-gray-600 text-white font-bold rounded-lg" aria-label="Select date from calendar"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></button><input type="date" ref={dateInputRef} onChange={handleDateChange} className="absolute -left-full" aria-hidden="true" /></div>{loading && (<div className="text-center text-gray-300 py-10"><p className="text-xl">Performing Deep Analysis...</p></div>)}{!loading && games.length === 0 && (<div className="text-center bg-gray-800 border border-dashed border-gray-600 rounded-lg p-8 my-10"><p className="text-lg font-bold text-white">No Matches Available for Today</p><p className="text-green-300 font-semibold mt-4">Due to our commitment in giving you the best and most accurate predictions, we do not have any matches today that fits our strict prediction model. Please check back tomorrow.</p></div>)}<div className="space-y-4">{games.map((game: any) => (<div key={game.id} className="bg-gray-800 border border-gray-700 rounded-xl p-5 shadow-lg"><p className="text-sm text-gray-400 font-semibold">{game.league}</p>{game.score?(<div className="text-center text-3xl font-bold my-3 text-white"><span>{game.score.home} - {game.score.away}</span><p className="text-sm font-normal text-gray-500">Full-Time</p></div>):(game.weakerTeam&&<p className="text-red-500 font-bold mt-2">({game.weakerTeam} - Excluded number of goals - 3)</p>)}<div className="flex justify-between items-center text-xl md:text-2xl font-bold mt-3"><span className={`text-right flex-1 ${game.weakerTeam===game.homeTeam?'text-red-500':''}`}>{game.homeTeam}</span><span className="text-gray-500 mx-4">vs</span><span className={`text-left flex-1 ${game.weakerTeam===game.awayTeam?'text-red-500':''}`}>{game.awayTeam}</span></div></div>))}</div></div>);
+
+    useEffect(() => {
+        setLoading(true);
+        axios.get(`/api/get-predictions?date=${formattedDate}`)
+            .then(res => { setGames(res.data); setLoading(false); })
+            .catch(err => { console.error(err); setLoading(false); });
+    }, [formattedDate]);
+
+    const changeDate = (days: number) => {
+        setDate(currentDate => addDays(currentDate, days));
+    };
+
+    const handleDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const selectedDate = new Date(event.target.value + 'T00:00:00');
+        setDate(selectedDate);
+    };
+
+    return (
+        <div className="p-4 md:p-6 max-w-4xl mx-auto">
+            <h2 className="text-3xl font-bold text-center mb-6">Daily Games</h2>
+            
+            <div className="flex justify-center items-center gap-2 sm:gap-4 mb-6">
+                <button onClick={() => changeDate(-1)} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">←</button>
+                <span className="text-lg sm:text-xl font-semibold text-green-400 text-center w-40">{format(date, 'MMM dd, yyyy')}</span>
+                <button onClick={() => changeDate(1)} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">→</button>
+                <button onClick={() => dateInputRef.current?.showPicker()} className="p-2 bg-gray-700 hover:bg-gray-600 text-white font-bold rounded-lg" aria-label="Select date from calendar">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                </button>
+                <input type="date" ref={dateInputRef} onChange={handleDateChange} className="absolute -left-full" aria-hidden="true" />
+            </div>
+
+            {loading && (<div className="text-center text-gray-300 py-10"><p className="text-xl">Performing Deep Analysis...</p></div>)}
+            
+            {!loading && games.length === 0 && (
+                <div className="text-center bg-gray-800 border border-dashed border-gray-600 rounded-lg p-8 my-10">
+                    <p className="text-lg font-bold text-white">No Matches Available for Today</p>
+                    <p className="text-green-300 font-semibold mt-4">Due to our commitment in giving you the best and most accurate predictions, we do not have any matches today that fits our strict prediction model. Please check back tomorrow.</p>
+                </div>
+            )}
+            
+            <div className="space-y-4">
+                {games.map((game: any) => (
+                    <div key={game.id} className="bg-gray-800 border border-gray-700 rounded-xl p-5 shadow-lg">
+                        <p className="text-sm text-gray-400 font-semibold">{game.league}</p>
+                        {game.score ? (<div className="text-center text-3xl font-bold my-3 text-white"><span>{game.score.home} - {game.score.away}</span><p className="text-sm font-normal text-gray-500">Full-Time</p></div>) : (game.weakerTeam && <p className="text-red-500 font-bold mt-2">({game.weakerTeam} - Excluded number of goals - 3)</p>)}
+                        <div className="flex justify-between items-center text-xl md:text-2xl font-bold mt-3">
+                            <span className={`text-right flex-1 ${game.weakerTeam === game.homeTeam ? 'text-red-500' : ''}`}>{game.homeTeam}</span>
+                            <span className="text-gray-500 mx-4">vs</span>
+                            <span className={`text-left flex-1 ${game.weakerTeam === game.awayTeam ? 'text-red-500' : ''}`}>{game.awayTeam}</span>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            {/* --- NEW: Call to Action Notice --- */}
+            {/* This will only show if there are games and it's not loading */}
+            {!loading && games.length > 0 && (
+                <div className="text-center bg-gray-800 border border-gray-700 rounded-lg p-6 mt-10">
+                    <p className="text-lg font-semibold text-white">
+                        Go to your favorite Sports-book maker and place your bet with the prediction above. We strongly recommend <a href="https://www.sportybet.com" target="_blank" rel="noopener noreferrer" className="text-green-400 hover:underline font-bold">Sportybet.com</a>
+                    </p>
+                </div>
+            )}
+        </div>
+    );
 };
 
 const PaywallPage = ({ user }) => {

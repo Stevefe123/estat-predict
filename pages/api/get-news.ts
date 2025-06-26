@@ -9,7 +9,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // We'll search for general football news from top sources
-    const url = `https://newsapi.org/v2/everything?q=football&sources=bbc-sport,espn,four-four-two&sortBy=publishedAt&pageSize=10&apiKey=${NEWS_API_KEY}`;
+    const url = `https://newsapi.org/v2/everything?q=(soccer OR "association football" OR "premier league" OR "la liga" OR "champions league") NOT (NFL OR "american football")&language=en&sortBy=publishedAt&pageSize=20&apiKey=${NEWS_API_KEY}`;
 
     try {
         const response = await axios.get(url);
