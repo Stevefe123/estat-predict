@@ -84,7 +84,7 @@ const PredictionsDashboard = () => {
 
     useEffect(() => {
         setLoading(true);
-        axios.get(`/api/get-predictions?date=${formattedDate}`)
+        axios.get(/api/get-cached-predictions?date=${formattedDate})
             .then(res => { setGames(res.data); setLoading(false); })
             .catch(err => { console.error(err); setLoading(false); });
     }, [formattedDate]);
