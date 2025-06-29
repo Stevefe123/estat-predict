@@ -10,31 +10,37 @@ const API_OPTIONS = {
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+    console.log("--- [get-live-scores] Received a request ---");
     try {
-        // --- NEW, MORE POWERFUL METHOD ---
-        // Use the 'live=all' parameter to get every single live game the API is tracking.
-        // This is the most reliable way to ensure no live game is missed.
         const url = `https://api-football-v1.p.rapidapi.com/v3/fixtures?live=all`;
         
-        console.log("Fetching all live games...");
+        console.log("Fetching all live games from API-Football...");
         const response = await axios.get(url, API_OPTIONS);
-        const liveFixtures = response.data.response;
-        console.log(`Found ${liveFixtures.length} live games globally.`);
+        
+        // --- DEBUGGING STEP 1: See the raw response ---
+        console.log(`API-Football returned ${response.data.results} results.`);
+        // If results > 0, let's log the raw fixture data to see what we got
+        if (response.data.results > 0) {
+            console.log("Raw fixtures received:", JSON.stringify(response.data.response, null, 2));
+        }
 
-        // We only need to send the most important data to the frontend
+        const liveFixtures = response.data.response;
+
         const formattedLiveScores = liveFixtures.map((fixture: any) => ({
             id: fixture.fixture.id,
-            league: `${fixture.league.name} (${fixture.league.country})`, // Add country for clarity
+            league: `${fixture.league.name} (${fixture.league.country})`,
             homeTeam: fixture.teams.home.name,
             awayTeam: fixture.teams.away.name,
             goals: fixture.goals,
-            elapsed: fixture.fixture.status.elapsed, // The current minute of the match
+            elapsed: fixture.fixture.status.elapsed,
         }));
 
+        console.log(`--- [get-live-scores] Successfully processed ${formattedLiveScores.length} games. Sending to client. ---`);
         res.status(200).json(formattedLiveScores);
 
     } catch (error) {
-        console.error("Live Score API Error:", error.response ? error.response.data : error.message);
+        console.error("--- [get-live-scores] CRITICAL ERROR ---");
+        console.error(error.response ? error.response.data : error.message);
         res.status(500).json({ message: 'Error fetching live scores.' });
     }
 }
