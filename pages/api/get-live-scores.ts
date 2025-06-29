@@ -11,19 +11,20 @@ const API_OPTIONS = {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     try {
-        // We only need a small, curated list of major leagues for live scores to keep it fast
-        const liveLeagueIds = [39, 140, 135, 78, 61, 2, 71, 262]; // Top 5 Europe, Champions League, Brazil, Argentina
-
-        // The 'live' parameter is the key here. We ask the API for all live games in our target leagues.
-        const url = `https://api-football-v1.p.rapidapi.com/v3/fixtures?live=${liveLeagueIds.join('-')}`;
+        // --- NEW, MORE POWERFUL METHOD ---
+        // Use the 'live=all' parameter to get every single live game the API is tracking.
+        // This is the most reliable way to ensure no live game is missed.
+        const url = `https://api-football-v1.p.rapidapi.com/v3/fixtures?live=all`;
         
+        console.log("Fetching all live games...");
         const response = await axios.get(url, API_OPTIONS);
         const liveFixtures = response.data.response;
+        console.log(`Found ${liveFixtures.length} live games globally.`);
 
         // We only need to send the most important data to the frontend
         const formattedLiveScores = liveFixtures.map((fixture: any) => ({
             id: fixture.fixture.id,
-            league: fixture.league.name,
+            league: `${fixture.league.name} (${fixture.league.country})`, // Add country for clarity
             homeTeam: fixture.teams.home.name,
             awayTeam: fixture.teams.away.name,
             goals: fixture.goals,
