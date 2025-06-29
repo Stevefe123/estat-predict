@@ -73,7 +73,7 @@ export default function Home() {
         if (!profile) return <p className="text-center text-gray-300 py-10">Finalizing login...</p>;
         const trialDaysUsed = profile.trial_days_used || 0; const subscriptionDaysLeft = profile.subscription_days_remaining || 0; const isTrialActive = trialDaysUsed < 7 && subscriptionDaysLeft <= 0; const isSubscribed = subscriptionDaysLeft > 0;
         const StatusBanner = () => { if (isSubscribed) { return (<div className="text-center bg-blue-900/50 p-3 my-4 max-w-4xl mx-auto rounded-lg"><p className="font-semibold text-blue-300">You have {subscriptionDaysLeft} active subscription day(s) remaining.</p></div>); } if (isTrialActive) { return (<div className="text-center bg-green-900/50 p-3 my-4 max-w-4xl mx-auto rounded-lg"><p className="font-semibold text-green-300">You have {7 - trialDaysUsed} active trial day(s) remaining.</p></div>); } return null; };
-        if (isSubscribed || isTrialActive) { return (<><StatusBanner /><NewsSlideshow /><PredictionsDashboard /><LiveScoreTicker /></>); }
+        if (isSubscribed || isTrialActive) { return (<><StatusBanner /><LiveScoreTicker /><NewsSlideshow /><PredictionsDashboard /><LiveScoreTicker /></>); }
         return <PaywallPage user={user} />;
     };
 
