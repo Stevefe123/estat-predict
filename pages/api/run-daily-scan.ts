@@ -39,9 +39,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     try {
         const lowScoringLeagueIds = [
-            135, 197, 262, 71, 98, 202, 290, 233, 129, 239, 119, 113,
-            39, 140, 78, 61, 94, 88, 103, 218, 144, 40,
-        ];
+    // --- NEW: International Tournaments ---
+    1,   // World Cup
+    4,   // Euro Championship
+    9,   // Copa America
+    
+    // Core low-scoring leagues
+    135, 197, 262, 71, 98, 202, 290, 233, 129, 239, 119, 113,
+    
+    // Major/Other relevant leagues
+    39, 140, 78, 61, 94, 88, 103, 218, 144, 40,
+];
         console.log(`Scanning ${lowScoringLeagueIds.length} curated low-scoring leagues.`);
 
         let fixturesToProcess: any[] = [];
