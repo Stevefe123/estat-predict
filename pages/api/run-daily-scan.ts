@@ -16,7 +16,6 @@ const API_OPTIONS = {
     }
 };
 
-// --- NEW: Helper function to calculate a team's form score from the last 5 games ---
 const calculateFormScore = (formString: string) => {
     if (!formString) return 0;
     let score = 0;
@@ -36,13 +35,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const now = new Date();
     const season = now.getMonth() < 7 ? now.getFullYear() - 1 : now.getFullYear();
     const todayStr = format(now, 'yyyy-MM-dd');
-    console.log(`Starting Dominance & Form scan for: ${todayStr}, season: ${season}`);
+    console.log(`Starting Final Combined scan for: ${todayStr}, season: ${season}`);
 
     try {
-        // --- STAGE 1: Use our curated list of low-scoring leagues ---
         const lowScoringLeagueIds = [
-            135, 197, 262, 71, 98, 202, 290, 233, 129, 239, // Core low-scoring
-            39, 140, 78, 61, 94, 88, 103, 218, 144, 40, // Major/Other relevant leagues
+            135, 197, 262, 71, 98, 202, 290, 233, 129, 239, 119, 113,
+            39, 140, 78, 61, 94, 88, 103, 218, 144, 40,
         ];
         console.log(`Scanning ${lowScoringLeagueIds.length} curated low-scoring leagues.`);
 
@@ -54,18 +52,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 fixturesToProcess.push(...result.value.data.response);
             }
         }
-        console.log(`Found ${fixturesToProcess.length} total fixtures to analyze.`);
 
         let allPredictions = [];
         for (const fixture of fixturesToProcess) {
-            const homeTeamId = fixture.teams.home.id;
-            const awayTeamId = fixture.teams.away.id;
+            const homeTeam = fixture.teams.home;
+            const awayTeam = fixture.teams.away;
 
-            // --- STAGE 2: H2H Dominance Filter ---
-            const h2hResponse = await axios.get(`https://api-football-v1.p.rapidapi.com/v3/fixtures/headtohead?h2h=${homeTeamId}-${awayTeamId}`, API_OPTIONS);
+            // Stage 1: H2H Dominance
+            const h2hResponse = await axios.get(`https://api-football-v1.p.rapidapi.com/v3/fixtures/headtohead?h2h=${homeTeam.id}-${awayTeam.id}`, API_OPTIONS);
             const h2hGames = h2hResponse.data.response;
 
-            if (h2hGames.length >= 3) { // Need at least 3 games for a meaningful comparison
+            if (h2hGames.length >= 3) {
                 let homeWins = 0;
                 let awayWins = 0;
                 h2hGames.forEach(game => {
@@ -75,33 +72,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
                 let strongerTeamH2H = null;
                 let weakerTeamH2H = null;
-
                 if (homeWins >= awayWins + 2) {
-                    strongerTeamH2H = fixture.teams.home;
-                    weakerTeamH2H = fixture.teams.away;
+                    strongerTeamH2H = homeTeam;
+                    weakerTeamH2H = awayTeam;
                 } else if (awayWins >= homeWins + 2) {
-                    strongerTeamH2H = fixture.teams.away;
-                    weakerTeamH2H = fixture.teams.home;
+                    strongerTeamH2H = awayTeam;
+                    weakerTeamH2H = homeTeam;
                 }
 
-                // If a dominant team is found, proceed to Stage 3
                 if (strongerTeamH2H) {
-                    // --- STAGE 3: Current Form Confirmation ---
+                    // Stage 2: Current Form Confirmation
                     const strongerTeamForm = calculateFormScore(strongerTeamH2H.last_5_games?.form);
                     const weakerTeamForm = calculateFormScore(weakerTeamH2H.last_5_games?.form);
 
                     if (strongerTeamForm > weakerTeamForm) {
-                        // This is a high-quality prediction!
+                        // Game passes all filters! Now, determine the weaker OFFENSIVE team for the prediction text.
+                        const homeGoalsAvg = parseFloat(homeTeam.last_5_games?.goals?.for?.average || '99');
+                        const awayGoalsAvg = parseFloat(awayTeam.last_5_games?.goals?.for?.average || '99');
+                        
+                        let weakerOffensiveTeamName = null;
+                        if (homeGoalsAvg < awayGoalsAvg) {
+                            weakerOffensiveTeamName = homeTeam.name;
+                        } else if (awayGoalsAvg < homeGoalsAvg) {
+                            weakerOffensiveTeamName = awayTeam.name;
+                        } else {
+                            // If scoring form is equal, we can default to the team with weaker H2H as the "weaker" team
+                            weakerOffensiveTeamName = weakerTeamH2H.name;
+                        }
+
                         allPredictions.push({
                             id: fixture.fixture.id,
                             league: `${fixture.league.name} (${fixture.league.country})`,
-                            homeTeam: fixture.teams.home.name,
-                            awayTeam: fixture.teams.away.name,
-                            // The prediction is now about the winner, not low score
+                            homeTeam: homeTeam.name,
+                            awayTeam: awayTeam.name,
                             prediction: {
-                                type: 'WINNER',
-                                strongerTeam: strongerTeamH2H.name,
-                                weakerTeam: weakerTeamH2H.name,
+                                type: 'LOW_SCORE_WEAKER_TEAM',
+                                weakerTeam: weakerOffensiveTeamName,
                             }
                         });
                     }
@@ -109,7 +115,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
         }
         
-        console.log(`Found ${allPredictions.length} Dominance & Form predictions.`);
+        console.log(`Found ${allPredictions.length} final predictions.`);
         allPredictions.sort((a, b) => a.league.localeCompare(b.league));
         const { error } = await supabaseAdmin.from('daily_cached_predictions').upsert({ prediction_date: todayStr, games_data: allPredictions }, { onConflict: 'prediction_date' });
 

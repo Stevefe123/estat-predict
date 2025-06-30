@@ -18,7 +18,6 @@ const PredictionsDashboard = () => {
 
     useEffect(() => {
         setLoading(true);
-        // The frontend API call remains the same, it just gets the new data format
         axios.get(`/api/get-predictions?date=${formattedDate}`)
             .then(res => { setGames(res.data); setLoading(false); })
             .catch(err => { console.error(err); setLoading(false); });
@@ -29,7 +28,7 @@ const PredictionsDashboard = () => {
 
     return (
         <div className="p-4 md:p-6 max-w-4xl mx-auto">
-            <h2 className="text-3xl font-bold text-center mb-6">Daily Predictions</h2>
+            <h2 className="text-3xl font-bold text-center mb-6">Daily Low-Score Predictions</h2>
             <div className="flex justify-center items-center gap-2 sm:gap-4 mb-6">
                 <button onClick={() => changeDate(-1)} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">←</button>
                 <span className="text-lg sm:text-xl font-semibold text-green-400 text-center w-40">{format(date, 'MMM dd, yyyy')}</span>
@@ -40,25 +39,27 @@ const PredictionsDashboard = () => {
                 <input type="date" ref={dateInputRef} onChange={handleDateChange} className="absolute -left-full" aria-hidden="true" />
             </div>
 
-            {loading && (<div className="text-center text-gray-300 py-10"><p className="text-xl">Analyzing H2H and Form...</p></div>)}
-            {!loading && games.length === 0 && (<div className="text-center bg-gray-800 border border-dashed border-gray-600 rounded-lg p-8 my-10"><p className="text-lg font-bold text-white">No Matches Available</p><p className="text-green-300 font-semibold mt-4">No games today meet our strict criteria for historical dominance and current form. Please check back tomorrow.</p></div>)}
+            {loading && (<div className="text-center text-gray-300 py-10"><p className="text-xl">Analyzing Low-Score Games...</p></div>)}
+            {!loading && games.length === 0 && (<div className="text-center bg-gray-800 border border-dashed border-gray-600 rounded-lg p-8 my-10"><p className="text-lg font-bold text-white">No Matches Available</p><p className="text-green-300 font-semibold mt-4">No games today meet our criteria for low-scoring predictions. Please check back tomorrow.</p></div>)}
             
             <div className="space-y-4">
                 {games.map((game: any) => (
                     <div key={game.id} className="bg-gray-800 border border-gray-700 rounded-xl p-5 shadow-lg">
                         <p className="text-sm text-gray-400 font-semibold">{game.league}</p>
                         
-                        {/* --- NEW PREDICTION DISPLAY --- */}
-                        {game.prediction?.type === 'WINNER' && (
-                            <div className="text-center my-2 p-2 bg-green-900/50 rounded-md">
-                                <p className="font-bold text-green-300">Prediction: {game.prediction.strongerTeam} to Win</p>
-                            </div>
+                        {/* --- CORRECTED PREDICTION DISPLAY --- */}
+                        {game.prediction?.type === 'LOW_SCORE_WEAKER_TEAM' && (
+                            <p className="text-red-500 font-bold mt-2">({game.prediction.weakerTeam} - Excluded Number of Goals - 3)</p>
                         )}
 
                         <div className="flex justify-between items-center text-xl md:text-2xl font-bold mt-3">
-                            <span className={`text-right flex-1 ${game.prediction?.strongerTeam === game.homeTeam ? 'text-green-400' : ''}`}>{game.homeTeam}</span>
+                            <span className={`text-right flex-1 ${game.prediction?.weakerTeam === game.homeTeam ? 'text-red-500' : ''}`}>
+                                {game.homeTeam}
+                            </span>
                             <span className="text-gray-500 mx-4">vs</span>
-                            <span className={`text-left flex-1 ${game.prediction?.strongerTeam === game.awayTeam ? 'text-green-400' : ''}`}>{game.awayTeam}</span>
+                            <span className={`text-left flex-1 ${game.prediction?.weakerTeam === game.awayTeam ? 'text-red-500' : ''}`}>
+                                {game.awayTeam}
+                            </span>
                         </div>
                     </div>
                 ))}
