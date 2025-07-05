@@ -32,7 +32,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log(`[SCAN START] Starting scan for: ${todayStr}`);
 
     try {
-        const fixturesUrl = buildUrl('fixtures/date/' + todayStr, 'include=league;participants.team;latest.participant;latest.scores');
+        // --- THIS IS THE CORRECTED API CALL ---
+        const fixturesUrl = buildUrl('fixtures/date/' + todayStr, 'include=league;participants;latest');
+        
         console.log(`[API CALL] Fetching fixtures from: ${fixturesUrl}`);
         const response = await axios.get(fixturesUrl);
         const fixturesToProcess = response.data.data || [];
@@ -45,13 +47,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             const homeTeam = fixture.participants.find(p => p.meta.location === 'home');
             const awayTeam = fixture.participants.find(p => p.meta.location === 'away');
 
-            if (!homeTeam || !awayTeam || !homeTeam.team || !awayTeam.team) {
-                console.log(`[SKIP] Fixture ${fixture.id} is missing team data.`);
+            if (!homeTeam || !awayTeam) {
+                console.log(`[SKIP] Fixture ${fixture.id} is missing participant data.`);
                 continue;
             }
 
-            const homeGoalsAvg = calculateGoalAverage(homeTeam.team.latest, homeTeam.id);
-            const awayGoalsAvg = calculateGoalAverage(awayTeam.team.latest, awayTeam.id);
+            // The 'latest' games are now directly on the fixture object, not the team
+            const homeGames = fixture.latest?.filter(g => g.participants.some(p => p.id === homeTeam.id));
+            const awayGames = fixture.latest?.filter(g => g.participants.some(p => p.id === awayTeam.id));
+
+            const homeGoalsAvg = calculateGoalAverage(homeGames, homeTeam.id);
+            const awayGoalsAvg = calculateGoalAverage(awayGames, awayTeam.id);
             console.log(`[STATS] ${homeTeam.name} (Avg Goals: ${homeGoalsAvg.toFixed(2)}) vs ${awayTeam.name} (Avg Goals: ${awayGoalsAvg.toFixed(2)})`);
 
             if (homeGoalsAvg < 1.5 || awayGoalsAvg < 1.5) {
@@ -86,7 +92,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     } catch (error) {
         console.error("--- [CRITICAL SCAN ERROR] ---");
-        // Log the specific part of the error that is most useful
         const errorMessage = error.response?.data?.message || error.message;
         console.error("Error Message:", errorMessage);
         res.status(500).json({ message: 'Error during daily scan.', error: errorMessage });
