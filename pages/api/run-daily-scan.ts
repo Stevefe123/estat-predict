@@ -4,84 +4,88 @@ import { format } from 'date-fns';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL || '', process.env.SUPABASE_SERVICE_ROLE_KEY || '');
+const API_OPTIONS = { method: 'GET', headers: { 'X-RapidAPI-Key': process.env.FOOTBALL_API_KEY!, 'X-RapidAPI-Host': 'api-football-v1.p.rapidapi.com' } };
 
-// Helper to build the Sportmonks API URL
-const buildUrl = (path: string, params: string = '') => {
-    return `https://api.sportmonks.com/v3/football/${path}?api_token=${process.env.SPORTMONKS_API_TOKEN}&${params}`;
-};
-
-// Helper to get team stats
-const getTeamForm = async (teamId: string, seasonId: string) => {
-    try {
-        const url = buildUrl(`teams/${teamId}`, `include=latest.events`);
-        const response = await axios.get(url);
-        const latestGames = response.data.data.latest?.filter(game => game.season_id === seasonId) || [];
-        
-        if (latestGames.length === 0) return { goalsAvg: 99 };
-
-        const totalGoals = latestGames.reduce((sum, game) => {
-            const event = game.events.find(e => e.team_id === teamId);
-            return sum + (event?.value || 0);
-        }, 0);
-
-        return { goalsAvg: totalGoals / latestGames.length };
-    } catch (error) {
-        console.error(`Failed to get form for team ${teamId}`);
-        return { goalsAvg: 99 };
+const calculateFormScore = (formString: string = '') => {
+    let score = 0;
+    for (const result of formString) {
+        if (result === 'W') score += 3;
+        if (result === 'D') score += 1;
     }
+    return score;
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     const { secret } = req.query;
     if (secret !== process.env.CRON_SECRET) { return res.status(401).json({ message: 'Unauthorized' }); }
 
+    // Get today's date in the correct YYYY-MM-DD format. This is all we need.
     const todayStr = format(new Date(), 'yyyy-MM-dd');
-    console.log(`Starting daily scan for: ${todayStr} using Sportmonks`);
+    console.log(`Starting scan for all fixtures on date: ${todayStr}`);
 
     try {
-        // Sportmonks free plan has access to a specific set of leagues. We will query for today's games across all of them.
-        const fixturesUrl = buildUrl('fixtures/date/' + todayStr, 'include=league;participants');
-        const response = await axios.get(fixturesUrl);
-        const fixturesToProcess = response.data.data || [];
+        // --- THE CORRECTED API CALL ---
+        // We ask for all fixtures on a specific date. The API will find the correct leagues and seasons.
+        const fixturesUrl = `https://api-football-v1.p.rapidapi.com/v3/fixtures?date=${todayStr}`;
+        const response = await axios.get(fixturesUrl, API_OPTIONS);
+        const fixturesToProcess = response.data.response || [];
         
-        console.log(`Found ${fixturesToProcess.length} total fixtures to analyze.`);
+        console.log(`Found ${fixturesToProcess.length} total fixtures globally to analyze.`);
 
         let allPredictions = [];
         for (const fixture of fixturesToProcess) {
-            const homeTeam = fixture.participants.find(p => p.meta.location === 'home');
-            const awayTeam = fixture.participants.find(p => p.meta.location === 'away');
+            const homeTeam = fixture.teams.home;
+            const awayTeam = fixture.teams.away;
 
-            if (!homeTeam || !awayTeam) continue;
+            // Stage 1: H2H Dominance
+            const h2hResponse = await axios.get(`https://api-football-v1.p.rapidapi.com/v3/fixtures/headtohead?h2h=${homeTeam.id}-${awayTeam.id}`, API_OPTIONS);
+            const h2hGames = h2hResponse.data.response;
 
-            // Get form for both teams
-            const homeForm = await getTeamForm(homeTeam.id, fixture.season_id);
-            const awayForm = await getTeamForm(awayTeam.id, fixture.season_id);
+            if (h2hGames.length >= 3) {
+                let homeWins = 0;
+                let awayWins = 0;
+                h2hGames.forEach(game => {
+                    if (game.teams.home.winner) homeWins++;
+                    if (game.teams.away.winner) awayWins++;
+                });
 
-            // The core "low-score" filter
-            if (homeForm.goalsAvg < 1.5 || awayForm.goalsAvg < 1.5) {
-                let weakerTeam = null;
-                if (homeForm.goalsAvg < awayForm.goalsAvg) {
-                    weakerTeam = homeTeam.name;
-                } else if (awayForm.goalsAvg < homeForm.goalsAvg) {
-                    weakerTeam = awayTeam.name;
+                let strongerTeamH2H = null;
+                let weakerTeamH2H = null;
+                if (homeWins >= awayWins + 2) {
+                    strongerTeamH2H = homeTeam;
+                    weakerTeamH2H = awayTeam;
+                } else if (awayWins >= homeWins + 2) {
+                    strongerTeamH2H = awayTeam;
+                    weakerTeamH2H = homeTeam;
                 }
 
-                if (weakerTeam) {
-                    allPredictions.push({
-                        id: fixture.id,
-                        league: `${fixture.league.name} (${fixture.league.country?.name || ''})`,
-                        homeTeam: homeTeam.name,
-                        awayTeam: awayTeam.name,
-                        prediction: {
-                            type: 'LOW_SCORE_WEAKER_TEAM',
-                            weakerTeam: weakerTeam,
-                        }
-                    });
+                if (strongerTeamH2H) {
+                    // Stage 2: Current Form Confirmation
+                    const strongerTeamForm = calculateFormScore(strongerTeamH2H.last_5_games?.form);
+                    const weakerTeamForm = calculateFormScore(weakerTeamH2H.last_5_games?.form);
+
+                    if (strongerTeamForm > weakerTeamForm) {
+                        const homeGoalsAvg = parseFloat(homeTeam.last_5_games?.goals?.for?.average || '99');
+                        const awayGoalsAvg = parseFloat(awayTeam.last_5_games?.goals?.for?.average || '99');
+                        
+                        let weakerOffensiveTeamName = (homeGoalsAvg < awayGoalsAvg) ? homeTeam.name : awayTeam.name;
+
+                        allPredictions.push({
+                            id: fixture.fixture.id,
+                            league: `${fixture.league.name} (${fixture.league.country})`,
+                            homeTeam: homeTeam.name,
+                            awayTeam: awayTeam.name,
+                            prediction: {
+                                type: 'LOW_SCORE_WEAKER_TEAM',
+                                weakerTeam: weakerOffensiveTeamName,
+                            }
+                        });
+                    }
                 }
             }
         }
         
-        console.log(`Found ${allPredictions.length} Low-Score predictions.`);
+        console.log(`Found ${allPredictions.length} final predictions.`);
         allPredictions.sort((a, b) => a.league.localeCompare(b.league));
         const { error } = await supabaseAdmin.from('daily_cached_predictions').upsert({ prediction_date: todayStr, games_data: allPredictions }, { onConflict: 'prediction_date' });
 
@@ -89,7 +93,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         res.status(200).json({ message: `Success: Cached ${allPredictions.length} predictions.` });
 
     } catch (error) {
-        console.error("Daily Scan Error:", error.response?.data || error.message);
-        res.status(500).json({ message: 'Error during daily scan.' });
+        console.error("Daily Scan Error:", error.message);
+        res.status(500).json({ message: 'Error during daily scan.', error: error.message });
     }
 }
