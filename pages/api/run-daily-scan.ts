@@ -9,19 +9,31 @@ const buildUrl = (path: string, params: string = '') => {
     return `https://api.sportmonks.com/v3/football/${path}?api_token=${process.env.SPORTMONKS_API_TOKEN}&${params}`;
 };
 
-const calculateGoalAverage = (games: any[], teamId: string) => {
-    if (!games || games.length === 0) return 99;
-    let totalGoals = 0;
-    games.forEach(game => {
-        const participant = game.participants?.find(p => p.team_id === teamId);
-        if (participant) {
-            const score = game.scores?.find(s => s.participant_id === participant.id && s.description === 'CURRENT');
-            if (score) {
-                totalGoals += score.score.goals;
+// Helper function to get a team's recent goal average
+const getTeamGoalAverage = async (teamId: string) => {
+    try {
+        // This makes a separate, dedicated call to get the last 5 games for a specific team
+        const url = buildUrl(`teams/${teamId}`, 'include=latest.scores;latest.participants');
+        const response = await axios.get(url);
+        const latestGames = response.data.data.latest;
+
+        if (!latestGames || latestGames.length === 0) return 99;
+
+        let totalGoals = 0;
+        latestGames.forEach(game => {
+            const participant = game.participants.find(p => p.team_id === teamId);
+            if (participant) {
+                const score = game.scores.find(s => s.participant_id === participant.id && s.description === 'CURRENT');
+                if (score) {
+                    totalGoals += score.score.goals;
+                }
             }
-        }
-    });
-    return games.length > 0 ? totalGoals / games.length : 99;
+        });
+        return latestGames.length > 0 ? totalGoals / latestGames.length : 99;
+    } catch (error) {
+        console.error(`Error fetching stats for team ${teamId}:`, error.response?.data?.message || error.message);
+        return 99; // Return a high number on error to exclude it from predictions
+    }
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -32,10 +44,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log(`[SCAN START] Starting scan for: ${todayStr}`);
 
     try {
-        // --- THIS IS THE CORRECTED API CALL ---
-        const fixturesUrl = buildUrl('fixtures/date/' + todayStr, 'include=league;participants;latest');
-        
-        console.log(`[API CALL] Fetching fixtures from: ${fixturesUrl}`);
+        // Step 1: Get all of today's fixtures
+        const fixturesUrl = buildUrl('fixtures/date/' + todayStr, 'include=league;participants');
         const response = await axios.get(fixturesUrl);
         const fixturesToProcess = response.data.data || [];
         console.log(`[API SUCCESS] Found ${fixturesToProcess.length} fixtures.`);
@@ -52,14 +62,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 continue;
             }
 
-            // The 'latest' games are now directly on the fixture object, not the team
-            const homeGames = fixture.latest?.filter(g => g.participants.some(p => p.id === homeTeam.id));
-            const awayGames = fixture.latest?.filter(g => g.participants.some(p => p.id === awayTeam.id));
-
-            const homeGoalsAvg = calculateGoalAverage(homeGames, homeTeam.id);
-            const awayGoalsAvg = calculateGoalAverage(awayGames, awayTeam.id);
+            // Step 2: Get the form for each team individually
+            const homeGoalsAvg = await getTeamGoalAverage(homeTeam.id);
+            const awayGoalsAvg = await getTeamGoalAverage(awayTeam.id);
             console.log(`[STATS] ${homeTeam.name} (Avg Goals: ${homeGoalsAvg.toFixed(2)}) vs ${awayTeam.name} (Avg Goals: ${awayGoalsAvg.toFixed(2)})`);
 
+            // Step 3: Apply the low-score filter
             if (homeGoalsAvg < 1.5 || awayGoalsAvg < 1.5) {
                 let weakerTeam = null;
                 if (homeGoalsAvg < awayGoalsAvg) weakerTeam = homeTeam.name;
