@@ -4,21 +4,15 @@ import { format } from 'date-fns';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL || '', process.env.SUPABASE_SERVICE_ROLE_KEY || '');
+const footballApiOptions = { method: 'GET', headers: { 'X-RapidAPI-Key': process.env.FOOTBALL_API_KEY!, 'X-RapidAPI-Host': 'api-football-v1.p.rapidapi.com' } };
 
-const buildUrl = (path: string, params: string = '') => {
-    return `https://api.sportmonks.com/v3/football/${path}?api_token=${process.env.SPORTMONKS_API_TOKEN}&${params}`;
-};
-
-// Helper to count wins from a list of recent games provided by Sportmonks
-const countWinsInLatest = (games: any[] = [], teamId: number) => {
-    let wins = 0;
-    games.forEach(game => {
-        const participant = game.participants.find(p => p.id === teamId);
-        if (participant && participant.meta.winner === true) {
-            wins++;
-        }
-    });
-    return wins;
+const calculateFormScore = (formString: string = '') => {
+    let score = 0;
+    for (const result of formString) {
+        if (result === 'W') score += 3;
+        if (result === 'D') score += 1;
+    }
+    return score;
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -26,65 +20,109 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (secret !== process.env.CRON_SECRET) { return res.status(401).json({ message: 'Unauthorized' }); }
 
     const todayStr = format(new Date(), 'yyyy-MM-dd');
-    console.log(`[SCAN START] Starting Sportmonks "Form Dominance" scan for: ${todayStr}`);
+    console.log(`[SCAN START] Starting Dual-Model scan for: ${todayStr}`);
+
+    let allPredictions = [];
 
     try {
-        // Fetch all fixtures for today, including the 'latest' games for each participant (team)
-        const fixturesUrl = buildUrl('fixtures/date/' + todayStr, 'include=league;participants.latest.scores;participants.latest.participants');
-        const response = await axios.get(fixturesUrl);
-        const fixturesToProcess = response.data.data || [];
-        console.log(`[API SUCCESS] Found ${fixturesToProcess.length} fixtures to analyze.`);
+        // --- DATA GATHERING ---
+        // Get all fixtures from API-Football
+        const fixturesUrl = `https://api-football-v1.p.rapidapi.com/v3/fixtures?date=${todayStr}`;
+        const fixturesResponse = await axios.get(fixturesUrl, footballApiOptions);
+        const allFixtures = fixturesResponse.data.response || [];
+        console.log(`Found ${allFixtures.length} fixtures from API-Football.`);
 
-        let allPredictions = [];
-        for (const fixture of fixturesToProcess) {
-            const homeTeam = fixture.participants.find(p => p.meta.location === 'home');
-            const awayTeam = fixture.participants.find(p => p.meta.location === 'away');
+        // Get all odds from The Odds API (Note: free plan is limited to a few leagues)
+        const oddsResponse = await axios.get(`https://api.the-odds-api.com/v4/sports/soccer/odds/?regions=eu,uk,us,au&markets=h2h&oddsFormat=decimal&date=${todayStr}&apiKey=${process.env.ODDS_API_KEY}`);
+        const oddsFixtures = oddsResponse.data || [];
+        console.log(`Found ${oddsFixtures.length} fixtures from The Odds API.`);
 
-            if (!homeTeam || !awayTeam || !homeTeam.latest || !awayTeam.latest) continue;
+        // --- ANALYSIS LOOP ---
+        for (const fixture of allFixtures) {
+            const homeTeam = fixture.teams.home;
+            const awayTeam = fixture.teams.away;
 
-            // --- The Form Dominance Filter ---
-            const homeFormWins = countWinsInLatest(homeTeam.latest, homeTeam.id);
-            const awayFormWins = countWinsInLatest(awayTeam.latest, awayTeam.id);
+            // --- CATEGORY A: "HEAVY FAVORITE" (DOUBLE CHANCE) MODEL ---
+            const correspondingOdds = oddsFixtures.find(o => o.home_team.includes(homeTeam.name) || o.away_team.includes(awayTeam.name));
+            if (correspondingOdds) {
+                const bookmaker = correspondingOdds.bookmakers[0];
+                if (bookmaker) {
+                    const prices = bookmaker.markets[0].outcomes;
+                    const odds = {
+                        home: prices.find(p => p.name === homeTeam.name)?.price,
+                        away: prices.find(p => p.name === awayTeam.name)?.price,
+                        draw: prices.find(p => p.name === 'Draw')?.price,
+                    };
 
-            let strongerTeamInForm = null;
-            let weakerTeamInForm = null;
+                    if (odds.home && odds.draw && odds.away) {
+                        const dc1X = (odds.home * odds.draw) / (odds.home + odds.draw);
+                        const dcX2 = (odds.away * odds.draw) / (odds.away + odds.draw);
 
-            if (homeFormWins >= awayFormWins + 2) {
-                strongerTeamInForm = homeTeam;
-                weakerTeamInForm = awayTeam;
-            } else if (awayFormWins >= homeFormWins + 2) {
-                strongerTeamInForm = awayTeam;
-                weakerTeamInForm = homeTeam;
+                        let strongerTeam = null;
+                        let doubleChanceType = null;
+                        if (dc1X <= 1.10) { strongerTeam = homeTeam; doubleChanceType = '1x'; }
+                        else if (dcX2 <= 1.10) { strongerTeam = awayTeam; doubleChanceType = '2x'; }
+
+                        if (strongerTeam) {
+                            // Found a heavy favorite, now check form and H2H
+                            const weakerTeam = (strongerTeam.id === homeTeam.id) ? awayTeam : homeTeam;
+                            const strongerForm = calculateFormScore(strongerTeam.last_5_games?.form);
+                            const weakerForm = calculateFormScore(weakerTeam.last_5_games?.form);
+
+                            if (strongerForm > weakerForm) {
+                                const h2hResponse = await axios.get(`https://api-football-v1.p.rapidapi.com/v3/fixtures/headtohead?h2h=${homeTeam.id}-${awayTeam.id}`, footballApiOptions);
+                                const h2hGames = h2hResponse.data.response;
+                                if (h2hGames.length > 0) {
+                                    let strongerWins = 0, weakerWins = 0;
+                                    h2hGames.forEach(g => {
+                                        if (g.teams.home.id === strongerTeam.id && g.teams.home.winner) strongerWins++;
+                                        if (g.teams.away.id === strongerTeam.id && g.teams.away.winner) strongerWins++;
+                                        if (g.teams.home.id === weakerTeam.id && g.teams.home.winner) weakerWins++;
+                                        if (g.teams.away.id === weakerTeam.id && g.teams.away.winner) weakerWins++;
+                                    });
+                                    if (strongerWins > weakerWins) {
+                                        allPredictions.push({
+                                            id: `${fixture.fixture.id}-A`,
+                                            league: `${fixture.league.name} (${fixture.league.country})`,
+                                            homeTeam: homeTeam.name, awayTeam: awayTeam.name,
+                                            prediction: { type: 'DOUBLE_CHANCE', strongerTeam: strongerTeam.name, value: doubleChanceType }
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
-            if (strongerTeamInForm) {
-                console.log(`[PREDICTION FOUND] ${strongerTeamInForm.name} vs ${weakerTeamInForm.name} is a candidate.`);
-                allPredictions.push({
-                    id: fixture.id,
-                    league: `${fixture.league.name} (${fixture.league.country?.name || ''})`,
-                    homeTeam: homeTeam.name,
-                    awayTeam: awayTeam.name,
-                    prediction: {
-                        type: 'LOW_SCORE_WEAKER_TEAM',
-                        weakerTeam: weakerTeamInForm.name,
-                    }
-                });
+            // --- CATEGORY B: "LOW-SCORE DOMINANCE" MODEL ---
+            // This is a simplified version for demonstration
+            const homeGoalsAvg = parseFloat(homeTeam.last_5_games?.goals?.for?.average || '99');
+            const awayGoalsAvg = parseFloat(awayTeam.last_5_games?.goals?.for?.average || '99');
+            if (homeGoalsAvg < 2.0 && awayGoalsAvg < 2.0) { // Check if it's a low-scoring environment
+                const homeForm = calculateFormScore(homeTeam.last_5_games?.form);
+                const awayForm = calculateFormScore(awayTeam.last_5_games?.form);
+                if (homeForm !== awayForm) {
+                    const strongerFormTeam = (homeForm > awayForm) ? homeTeam : awayTeam;
+                    const weakerFormTeam = (homeForm > awayForm) ? awayTeam : homeTeam;
+                    // Simplified H2H check
+                    allPredictions.push({
+                        id: `${fixture.fixture.id}-B`,
+                        league: `${fixture.league.name} (${fixture.league.country})`,
+                        homeTeam: homeTeam.name, awayTeam: awayTeam.name,
+                        prediction: { type: 'LOW_SCORE_WEAKER_TEAM', weakerTeam: weakerFormTeam.name }
+                    });
+                }
             }
         }
         
-        console.log(`[CACHE] Caching ${allPredictions.length} predictions.`);
-        allPredictions.sort((a, b) => a.league.localeCompare(b.league));
-        const { error: cacheError } = await supabaseAdmin.from('daily_cached_predictions').upsert({ prediction_date: todayStr, games_data: allPredictions }, { onConflict: 'prediction_date' });
-
-        if (cacheError) throw cacheError;
-
-        console.log('[SCAN SUCCESS] Daily scan completed successfully.');
+        console.log(`[CACHE] Caching a total of ${allPredictions.length} predictions.`);
+        const { error } = await supabaseAdmin.from('daily_cached_predictions').upsert({ prediction_date: todayStr, games_data: allPredictions }, { onConflict: 'prediction_date' });
+        if (error) throw error;
         res.status(200).json({ message: `Success: Cached ${allPredictions.length} predictions.` });
 
     } catch (error) {
-        console.error("--- [CRITICAL SCAN ERROR] ---");
-        const errorMessage = error.response?.data?.message || error.message;
-        console.error("Error Message:", errorMessage);
-        res.status(500).json({ message: 'Error during daily scan.', error: errorMessage });
+        console.error("--- [CRITICAL SCAN ERROR] ---", error.message);
+        res.status(500).json({ message: 'Error during daily scan.', error: error.message });
     }
 }
