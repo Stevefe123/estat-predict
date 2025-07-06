@@ -7,7 +7,7 @@ const buildUrl = (path: string, params: string = '') => {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     try {
-        const url = buildUrl('livescores/inplay', 'include=league;participants');
+        const url = buildUrl('livescores/inplay', 'include=league;participants;scores');
         const response = await axios.get(url);
         const liveFixtures = response.data.data || [];
 
@@ -22,7 +22,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 homeTeam: homeTeam?.name || 'N/A',
                 awayTeam: awayTeam?.name || 'N/A',
                 goals: { home: scoreInfo?.score.goals || 0, away: scoreInfo?.score.goals || 0 },
-                elapsed: fixture.state.name, // e.g., "Inplay", "HT"
+                elapsed: fixture.state.name,
             };
         });
 
